@@ -67,13 +67,17 @@ Sob a imagem resultante do preprocessamento *antes de remover os contornos menor
   <img src="example/4.png" />
 </p>
 
-### Extrair grupos (clusters) de linhas
+### Agrupar linhas
+
+Após a extração das linhas na orientação da plantação, as linhas mais próximas entre si são agrupadas em *clusters*, ou seja, grupos de linha correspondentes a uma mesma faixa de plantação. Cada grupo tem uma distância mínima isolado de outras linhas para ser considerado um grupo. Após esse processo, os grupos de linhas são identificados. Veja:
 
 <p align="center">
   <img src="example/5.png" />
 </p>
 
-### Filtragem das linhas
+### Filtragem dos agrupamentos (clusters)
+
+Com cada *cluster* definido, deve-se obter a linha que melhor define a faixa de plantação. Para tal, é extraído a mediana das linhas de um mesmo *cluster* para que ela represente aquela faixa de plantação. Fazendo isso para todos os *clusters*, tem-se o resultado final da detecção:
 
 <p align="center">
   <img src="example/6.png" />
@@ -81,7 +85,16 @@ Sob a imagem resultante do preprocessamento *antes de remover os contornos menor
 
 ## Resultados
 
-Fluxo completo:
+- Tempo de processamento: ...
+  - Pré-processamento: ...
+  - Inferir orientação: ...
+  - Extrair linhas orientadas: ...
+  - Agrupar linhas: ...
+  - Filtrar agrupamentos: ...
+
+- Memória (RAM): ...
+
+- Fluxo completo:
 <p align="center">
   <img src="example/7.png" />
 </p>
