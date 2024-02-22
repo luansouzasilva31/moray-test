@@ -1,7 +1,22 @@
 import cv2
+import time
 import numpy as np
+from functools import wraps
 import matplotlib.pyplot as plt
 from skimage.morphology import skeletonize
+
+
+def timeit(func):
+    @wraps(func)
+    def timeit_wrapper(*args, **kwargs):
+        start_time = time.perf_counter()
+        result = func(*args, **kwargs)
+        end_time = time.perf_counter()
+        total_time = end_time - start_time
+        print(
+            f'{func.__name__}: {total_time:.4f} seconds')
+        return result
+    return timeit_wrapper
 
 
 def plot_images(images: list, grid: tuple = None, titles: list = None,
@@ -57,6 +72,7 @@ class RowCropDetector:
     def __init__(self):
         pass
 
+    @timeit
     def detect_crop_lines(self, image: np.ndarray, plot: bool = False):
         # Segmentation of plant rows
         custom_mask, closing = self.segment_row_crop(image, plot=False)
@@ -98,6 +114,7 @@ class RowCropDetector:
 
         return
 
+    @timeit
     def orientation_inference(self, row_crop_mask: np.ndarray):
         # Elementary lines structure
         skeleton = skeletonize(row_crop_mask)
@@ -112,6 +129,7 @@ class RowCropDetector:
 
         return median_line, ref_theta
 
+    @timeit
     def get_oriented_lines(self, row_crop_mask: np.ndarray, ref_theta: float):
         skeleton = skeletonize(row_crop_mask, method='lee')
 
@@ -124,6 +142,7 @@ class RowCropDetector:
 
         return f_lines
 
+    @timeit
     def get_line_clusters(self, lines: np.ndarray, image_shape: tuple):
         bg = np.zeros(image_shape[:2], dtype=np.uint8)
         white_lines = self.draw_rho_theta_lines(bg, lines, color=255, thick=2)
@@ -151,6 +170,7 @@ class RowCropDetector:
 
         return clusters
 
+    @timeit
     def filter_line_clusters(self, lines, clusters_idx):
         final_lines = list()
         for k in np.unique(clusters_idx):
@@ -164,6 +184,7 @@ class RowCropDetector:
 
         return final_lines
 
+    @timeit
     def segment_row_crop(self, image: np.ndarray, plot: bool = False):
         b, g, r = cv2.split(image)
 
@@ -264,6 +285,6 @@ if __name__ == '__main__':
     row_crop_detector = RowCropDetector()
 
     for i in [1, 2, 3, 4, 5, 6, 7, 8, 9]:
-        print(f'>>>>>>>> {i} <<<<<<<<')
+        print(f'\n>>>>>>>> {i} <<<<<<<<')
         image = cv2.imread(f'data/{i}.png')
         row_crop_detector.detect_crop_lines(image, plot=True)
