@@ -59,20 +59,64 @@ class RowCropDetector:
 
     def detect_crop_lines(self, image: np.ndarray, plot: bool = False):
         # Segmentation of plant rows
-        custom_mask, closing = self.segment_row_crop(image, plot=False)
+        custom_mask, closing = self.segment_row_crop(image, plot=plot)
 
         # Majoritary row crop orientation
-        ref_line, theta = self.orientation_inference(closing)
+        ref_line, theta = self.orientation_inference(closing, plot=plot)
+
+        # test
+        if plot:
+            ref_line_img = self.draw_rho_theta_lines(
+                image, np.expand_dims(ref_line, axis=0))
+
+            plot_images(
+                [image[:, :, ::-1], ref_line_img[:, :, ::-1]],
+                titles=['Input', 'Orientation'],
+                cmaps=[None, None]
+            )
 
         # Oriented lines
         oriented_lines = self.get_oriented_lines(custom_mask,
-                                                 ref_theta=theta)
+                                                 ref_theta=theta,
+                                                 plot=True)
 
         # Get clusters
         line_clusters = self.get_line_clusters(oriented_lines, image.shape[:2])
 
+        # test
+        if plot:
+            # Draw
+            orient_lines_img = self.draw_rho_theta_lines(
+                image, oriented_lines)
+            clusters_img = self.draw_line_clusters(
+                oriented_lines, line_clusters, bg_img=image
+            )
+
+            # Plot
+            plot_images(
+                [orient_lines_img[:, :, ::-1], clusters_img[:, :, ::-1]],
+                titles=['Lines', 'Clusters'],
+                cmaps=[None, None]
+            )
+
         # Filter cluster lines
         final_lines = self.filter_line_clusters(oriented_lines, line_clusters)
+
+        # test
+        if plot:
+            # Draw
+            clusters_img = self.draw_line_clusters(
+                oriented_lines, line_clusters, bg_img=image
+            )
+            final_img = self.draw_rho_theta_lines(
+                image, final_lines)
+
+            # Plot
+            plot_images(
+                [clusters_img[:, :, ::-1], final_img[:, :, ::-1]],
+                titles=['Clusters', 'Filtered clusters'],
+                cmaps=[None, None]
+            )
 
         if plot:
             # Draw
@@ -98,7 +142,8 @@ class RowCropDetector:
 
         return
 
-    def orientation_inference(self, row_crop_mask: np.ndarray):
+    def orientation_inference(self, row_crop_mask: np.ndarray,
+                              plot: bool = False):
         # Elementary lines structure
         skeleton = skeletonize(row_crop_mask)
         skeleton = (skeleton * 255).astype(np.uint8)
@@ -110,9 +155,23 @@ class RowCropDetector:
         median_line = np.median(pseudo_lines, axis=0)
         _, ref_theta = median_line[0]
 
+        if plot:
+            bg = cv2.cvtColor(skeleton, cv2.COLOR_GRAY2BGR)
+            pseudo_lines_img = self.draw_rho_theta_lines(
+                bg, pseudo_lines, color=(0, 0, 255)
+            )
+
+            plot_images(
+                [row_crop_mask, skeleton, pseudo_lines_img[:,:,::-1]], grid=(1, 3),
+                titles=['Row crop segment', 'Skeleton', 'Lines'],
+                cmaps=['gray', 'gray', 'gray'],
+                suptitle='Initial lines'
+            )
+
         return median_line, ref_theta
 
-    def get_oriented_lines(self, row_crop_mask: np.ndarray, ref_theta: float):
+    def get_oriented_lines(self, row_crop_mask: np.ndarray, ref_theta: float,
+                           plot: bool = False):
         skeleton = skeletonize(row_crop_mask, method='lee')
 
         kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (5, 5))
@@ -122,9 +181,26 @@ class RowCropDetector:
         lines = cv2.HoughLines(skeleton, rho=1, theta=np.pi/180, threshold=50)
         f_lines = self.filter_lines_angle(lines, ref_theta, p=np.pi/360)
 
+        if plot:
+            bg = cv2.cvtColor(skeleton, cv2.COLOR_GRAY2BGR)
+            lines_img = self.draw_rho_theta_lines(
+                bg, lines, color=(0, 0, 255)
+            )
+            f_lines_img = self.draw_rho_theta_lines(
+                bg, f_lines, color=(0, 0, 255)
+            )
+
+            plot_images(
+                [row_crop_mask, skeleton, lines_img[:,:,::-1], f_lines_img[:,:,::-1]], grid=(1, 4),
+                titles=['Row crop segment', 'Skeleton', 'Lines',
+                        'Filtered lines'],
+                cmaps=['gray', 'gray', 'gray', 'gray'],
+                suptitle='Initial lines'
+            )
         return f_lines
 
-    def get_line_clusters(self, lines: np.ndarray, image_shape: tuple):
+    def get_line_clusters(self, lines: np.ndarray, image_shape: tuple,
+                          plot: bool = False):
         bg = np.zeros(image_shape[:2], dtype=np.uint8)
         white_lines = self.draw_rho_theta_lines(bg, lines, color=255, thick=2)
 
@@ -180,6 +256,7 @@ class RowCropDetector:
                 [image[:, :, ::-1], custom_thresh, custom_thresh_clean,
                  closing], grid=(1, 4),
                 titles=['Input', 'Thresh', 'Cleaning', 'Closing'],
+                cmaps=[None, 'gray', 'gray', 'gray'],
                 suptitle='Row crop segmentation'
             )
 
