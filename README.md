@@ -2,6 +2,10 @@
 
 Teste de Visão Computacional da empresa Moray.
 
+## Execução do algoritmo
+
+A solução desenvolvida está no arquivo `crop_line_detection.py`. Para tal, dentro do ambiente de desenvolvimento, instale os requerimentos com `pip install -r requirements.txt`, e então o algoritmo deve executar normalmente.
+
 ## Problema proposto
 
 Detecção de linhas de plantação em imagens de drone capturadas perpendicularmente ao solo. Exemplo:
