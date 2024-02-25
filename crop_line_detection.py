@@ -72,7 +72,6 @@ class RowCropDetector:
     def __init__(self):
         pass
 
-    @timeit
     def detect_crop_lines(self, image: np.ndarray, plot: bool = False):
         # Segmentation of plant rows
         custom_mask, closing = self.segment_row_crop(image, plot=False)
@@ -84,11 +83,13 @@ class RowCropDetector:
         oriented_lines = self.get_oriented_lines(custom_mask,
                                                  ref_theta=theta)
 
-        # Get clusters
-        line_clusters = self.get_line_clusters(oriented_lines, image.shape[:2])
+        # # Get clusters
+        # line_clusters = self.get_line_clusters(
+        #     oriented_lines, image.shape[:2])
 
-        # Filter cluster lines
-        final_lines = self.filter_line_clusters(oriented_lines, line_clusters)
+        # # Filter cluster lines
+        # final_lines = self.filter_line_clusters(oriented_lines, line_clusters)
+        final_lines = self.get_final_lines(oriented_lines, theta, image)
 
         if plot:
             # Draw
@@ -96,9 +97,6 @@ class RowCropDetector:
                 image, np.expand_dims(ref_line, axis=0))
             orient_lines_img = self.draw_rho_theta_lines(
                 image, oriented_lines)
-            clusters_img = self.draw_line_clusters(
-                oriented_lines, line_clusters, bg_img=image
-            )
             final_img = self.draw_rho_theta_lines(
                 image, final_lines
             )
@@ -106,10 +104,9 @@ class RowCropDetector:
             # Plot
             plot_images(
                 [image[:, :, ::-1], ref_line_img[:, :, ::-1],
-                 orient_lines_img[:, :, ::-1], clusters_img[:, :, ::-1],
-                 final_img[:, :, ::-1]],
-                titles=['Input', 'Orientation', 'Lines', 'Clusters', 'Final'],
-                cmaps=[None, None, None, None, None]
+                 orient_lines_img[:, :, ::-1], final_img[:, :, ::-1]],
+                titles=['Input', 'Orientation', 'Lines', 'Final'],
+                cmaps=[None, None, None, None]
             )
 
         return
@@ -141,6 +138,64 @@ class RowCropDetector:
         f_lines = self.filter_lines_angle(lines, ref_theta, p=np.pi/360)
 
         return f_lines
+
+    @ timeit
+    def get_final_lines(self, lines: np.ndarray, theta: float,
+                        image: np.ndarray):
+        bg = np.zeros(image.shape[:2], dtype=np.uint8)
+        white_lines = self.draw_rho_theta_lines(bg, lines, color=255, thick=2)
+
+        kernel = np.ones((5, 5), np.uint8)
+        white_lines = cv2.morphologyEx(white_lines, cv2.MORPH_CLOSE, kernel)
+        white_lines = ((white_lines > 50) * 255).astype(np.uint8)
+
+        cnts, _ = cv2.findContours(white_lines, 0, 1)
+
+        final_lines = list()
+        for cnt in cnts:
+            bg = np.zeros(image.shape[:2], dtype=np.uint8)
+            skeleton = cv2.drawContours(bg, [cnt], -1, 255, -1)
+
+            # skeleton = skeletonize(skeleton)
+            # skeleton = (skeleton * 255).astype(np.uint8)
+
+            cur_lines = cv2.HoughLines(skeleton, rho=1, theta=np.pi/180,
+                                       threshold=50)
+
+            # Only lines in theta dir with 0.5̣º max variation
+            filt_lines = self.filter_lines_angle(cur_lines, theta, p=np.pi/360)
+
+            # Reference line for this cluster
+            line_rho, line_theta = np.median(filt_lines, axis=0)[0]
+
+            final_lines.append([(line_rho, line_theta)])
+
+        final_lines = np.array(final_lines)
+
+        return final_lines
+
+    @timeit
+    def get_line_clusters_2(self, lines: np.ndarray, max_gap: int = 12):
+        # Cluster using rho
+        rhos = list(lines[:, 0, 0])
+        rhos_sort_idx = np.argsort(rhos)
+
+        k_index = [0,] * len(rhos)
+        cluster = [rhos_sort_idx[0]]
+
+        count = 0
+        for i, j in zip(rhos_sort_idx[:-1], rhos_sort_idx[1:]):
+            diff = rhos[j] - rhos[i]
+
+            if diff <= max_gap:
+                cluster.append(j)
+            else:
+                for k in cluster:
+                    k_index[k] = count
+                cluster = [rhos_sort_idx[j]]
+                count += 1
+
+        return k_index
 
     @timeit
     def get_line_clusters(self, lines: np.ndarray, image_shape: tuple):
