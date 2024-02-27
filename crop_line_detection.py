@@ -73,23 +73,21 @@ class RowCropDetector:
         pass
 
     def detect_crop_lines(self, image: np.ndarray, plot: bool = False):
+
         # Segmentation of plant rows
-        custom_mask, closing = self.segment_row_crop(image, plot=False)
+        custom_mask, closing = self.segment_row_crop(image, plot=plot)
 
         # Majoritary row crop orientation
-        ref_line, theta = self.orientation_inference(closing)
+        ref_line, theta = self.orientation_inference(closing, plot=plot)
 
         # Oriented lines
         oriented_lines = self.get_oriented_lines(custom_mask,
-                                                 ref_theta=theta)
+                                                 ref_theta=theta,
+                                                 plot=plot)
 
-        # # Get clusters
-        # line_clusters = self.get_line_clusters(
-        #     oriented_lines, image.shape[:2])
-
-        # # Filter cluster lines
-        # final_lines = self.filter_line_clusters(oriented_lines, line_clusters)
-        final_lines = self.get_final_lines(oriented_lines, theta, image)
+        # Get one line per segment
+        final_lines = self.get_final_lines(oriented_lines, theta, image,
+                                           plot=plot)
 
         if plot:
             # Draw
@@ -103,16 +101,17 @@ class RowCropDetector:
 
             # Plot
             plot_images(
-                [image[:, :, ::-1], ref_line_img[:, :, ::-1],
+                [image[:, :, ::-1], custom_mask, ref_line_img[:, :, ::-1],
                  orient_lines_img[:, :, ::-1], final_img[:, :, ::-1]],
-                titles=['Input', 'Orientation', 'Lines', 'Final'],
-                cmaps=[None, None, None, None]
+                titles=['Input', 'Segment', 'Orientation', 'Lines', 'Final'],
+                cmaps=[None, 'gray', None, None, None]
             )
 
         return
 
     @timeit
-    def orientation_inference(self, row_crop_mask: np.ndarray):
+    def orientation_inference(self, row_crop_mask: np.ndarray,
+                              plot: bool = False):
         # Elementary lines structure
         skeleton = skeletonize(row_crop_mask)
         skeleton = (skeleton * 255).astype(np.uint8)
@@ -124,24 +123,35 @@ class RowCropDetector:
         median_line = np.median(pseudo_lines, axis=0)
         _, ref_theta = median_line[0]
 
+        if plot:
+            draw = cv2.cvtColor(row_crop_mask, cv2.COLOR_GRAY2RGB)
+            draw = self.draw_rho_theta_lines(draw, [median_line])
+            plot_images([draw], (1, 1), ['Orientation'], [None])
+
         return median_line, ref_theta
 
     @timeit
-    def get_oriented_lines(self, row_crop_mask: np.ndarray, ref_theta: float):
+    def get_oriented_lines(self, row_crop_mask: np.ndarray, ref_theta: float,
+                           plot: bool = False):
         skeleton = skeletonize(row_crop_mask, method='lee')
 
         kernel = cv2.getStructuringElement(cv2.MORPH_CROSS, (5, 5))
         skeleton = cv2.dilate(skeleton, kernel)
         skeleton = cv2.Canny(skeleton, 0, 255)
 
-        lines = cv2.HoughLines(skeleton, rho=1, theta=np.pi/180, threshold=50)
+        lines = cv2.HoughLines(skeleton, rho=1, theta=np.pi/180, threshold=100)
         f_lines = self.filter_lines_angle(lines, ref_theta, p=np.pi/360)
+
+        if plot:
+            draw = cv2.cvtColor(row_crop_mask, cv2.COLOR_GRAY2RGB)
+            draw = self.draw_rho_theta_lines(draw, f_lines)
+            plot_images([draw], (1, 1), ['Oriented lines'], [None])
 
         return f_lines
 
     @ timeit
     def get_final_lines(self, lines: np.ndarray, theta: float,
-                        image: np.ndarray):
+                        image: np.ndarray, plot: bool = False):
         bg = np.zeros(image.shape[:2], dtype=np.uint8)
         white_lines = self.draw_rho_theta_lines(bg, lines, color=255, thick=2)
 
@@ -171,6 +181,10 @@ class RowCropDetector:
             final_lines.append([(line_rho, line_theta)])
 
         final_lines = np.array(final_lines)
+
+        if plot:
+            draw = self.draw_rho_theta_lines(image, final_lines)
+            plot_images([draw], (1, 1), ['Final lines'], [None])
 
         return final_lines
 
@@ -256,6 +270,7 @@ class RowCropDetector:
                 [image[:, :, ::-1], custom_thresh, custom_thresh_clean,
                  closing], grid=(1, 4),
                 titles=['Input', 'Thresh', 'Cleaning', 'Closing'],
+                cmaps=[None, 'gray', 'gray', 'gray'],
                 suptitle='Row crop segmentation'
             )
 
@@ -339,7 +354,7 @@ class RowCropDetector:
 if __name__ == '__main__':
     row_crop_detector = RowCropDetector()
 
-    for i in [1, 2, 3, 4, 5, 6, 7, 8, 9]:
+    for i in [7, 8, 9]:
         print(f'\n>>>>>>>> {i} <<<<<<<<')
         image = cv2.imread(f'data/{i}.png')
         row_crop_detector.detect_crop_lines(image, plot=True)
